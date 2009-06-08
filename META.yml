@@ -1,12 +1,13 @@
 ---
 name: JavaScript-Beautifier
-version: 0.09
+version: 0.10
 author:
   - 'Fayland Lam <fayland@gmail.com>'
 abstract: Beautify Javascript (beautifier for javascript)
 license: perl
 resources:
   license: http://dev.perl.org/licenses/
+  repository: http://github.com/fayland/perl-javascript-beautifier/tree/master
 build_requires:
   Getopt::Long: 0
   Pod::Usage: 0
@@ -14,7 +15,7 @@ build_requires:
 provides:
   JavaScript::Beautifier:
     file: lib/JavaScript/Beautifier.pm
-    version: 0.09
+    version: 0.10
 generated_by: Module::Build version 0.33
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
