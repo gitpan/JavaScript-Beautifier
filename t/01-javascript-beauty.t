@@ -69,7 +69,7 @@ my @tests = (
  
     [ "do { a(); } while ( 1 );", "do {\n    a();\n} while (1);" ],
     [ "do {\n} while ( 1 );", "do {} while (1);" ],
-    [ "var a, b, c, d = 0, c = function() {}, d = '';", "var a, b, c, d = 0,\nc = function() {},\nd = '';" ],
+    [ "var a, b, c, d = 0, c = function() {}, d = '';", "var a, b, c, d = 0,\nc = function () {},\nd = '';" ],
     [ "delete x if (a) b();", "delete x\nif (a) b();" ],
     [ "delete x[x] if (a) b();", "delete x[x]\nif (a) b();" ],
     [ "do{x()}while(a>1)", "do {\n    x()\n} while (a > 1)" ],
@@ -87,8 +87,20 @@ my @tests = (
     [ "a=/regexp", "a = /regexp" ], # incomplete regexp
     [ "{a:#1=[],b:#1#,c:#999999#}", "{\n    a: #1=[],\n    b: #1#,\n    c: #999999#\n}" ],
 
-    [ 'var o=$.extend(a,function(){alert(x);}', "var o = \$.extend(a, function() {\n    alert(x);\n}" ],
-    [ 'var o=$.extend(a);function(){alert(x);}', "var o = \$.extend(a);\nfunction() {\n    alert(x);\n}" ],
+    ["<!--\nsomething();\n-->", "<!--\nsomething();\n-->" ],
+    ["<!--\nif(i<0){bla();}\n-->", "<!--\nif (i < 0) {\n    bla();\n}\n-->"],
+    ["<!--\nsomething();\n-->\n<!--\nsomething();\n-->", "<!--\nsomething();\n-->\n<!--\nsomething();\n-->"],
+    ["<!--\nif(i<0){bla();}\n-->\n<!--\nif(i<0){bla();}\n-->", "<!--\nif (i < 0) {\n    bla();\n}\n-->\n<!--\nif (i < 0) {\n    bla();\n}\n-->"],
+
+    [ 'var o=$.extend(a,function(){alert(x);}', "var o = \$.extend(a, function () {\n    alert(x);\n}" ],
+    [ 'var o=$.extend(a);function(){alert(x);}', "var o = \$.extend(a);\nfunction () {\n    alert(x);\n}" ],
+
+    # regexps
+    [ 'a(/abc\\/\\/def/);b()', "a(/abc\\/\\/def/);\nb()" ],
+    [ 'a(/a[b\\[\\]c]d/);b()', "a(/a[b\\[\\]c]d/);\nb()" ],
+    [ 'a(/a[b\\[', "a(/a[b\\[" ], # incomplete char class
+    # allow unescaped / in char classes
+    [ 'a(/[a/b]/);b()', "a(/[a/b]/);\nb()" ],
  );
 
 plan tests => scalar @tests + 4;

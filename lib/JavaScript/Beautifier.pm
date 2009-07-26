@@ -3,7 +3,7 @@ package JavaScript::Beautifier;
 use warnings;
 use strict;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 our $AUTHORITY = 'cpan:FAYLAND';
 
 use base 'Exporter';
@@ -72,7 +72,7 @@ sub js_beautify {
                 # do nothing on (( and )( and ][ and ]( ..
             } elsif ( $last_type ne 'TK_WORD' && $last_type ne 'TK_OPERATOR' ) {
                 print_space();
-            } elsif ( (grep { $last_word eq $_ } @line_starter) && $last_word ne 'function' ) {
+            } elsif ( grep { $last_word eq $_ } @line_starter ) {
                 print_space();
             }
             print_token();
@@ -343,7 +343,8 @@ sub print_newline {
 }
 
 sub print_space {
-    my $last_output = scalar @output ? $output[ scalar @output - 1 ] : ' ';
+    my $last_output = ' ';
+    $last_output = $output[ scalar @output - 1 ] if scalar @output;
     if ( $last_output ne ' ' && $last_output ne "\n" && $last_output ne $indent_string ) { # prevent occassional duplicate space
         push @output, ' ';
     }
@@ -376,17 +377,24 @@ sub restore_mode {
 }
 sub get_next_token {
     my $n_newlines = 0;
-    my $c = '';
-    do {
+    
+    if ( $parser_pos >= scalar @input ) {
+        return ['', 'TK_EOF'];
+    }
+    
+    my $c = $input[$parser_pos];
+    $parser_pos++;
+    
+    while ( grep { $_ eq $c } @whitespace ) {
         if ( $parser_pos >= scalar @input ) {
             return ['', 'TK_EOF'];
         }
-        $c = $input[$parser_pos];
-        $parser_pos++;
         if ( $c eq "\n" ) {
             $n_newlines += 1;
         }
-    } while ( grep { $_ eq $c } @whitespace );
+        $c = $input[$parser_pos];
+        $parser_pos++;
+    };
     my $wanted_newline = 0;
     if ( $opt_preserve_newlines ) {
         if ( $n_newlines > 1 ) {
@@ -409,10 +417,11 @@ sub get_next_token {
         }
         
         # small and surprisingly unugly hack for 1E-10 representation
-        if ( $parser_pos != scalar @input && $c =~ /^[0-9]+[Ee]$/ && $input[$parser_pos] eq '-' ) {
+        if ( $parser_pos != scalar @input && $c =~ /^[0-9]+[Ee]$/ && ($input[$parser_pos] eq '-' || $input[$parser_pos] eq '+') ) {
+            my $sign = $input[$parser_pos];
             $parser_pos++;
             my $t = get_next_token($parser_pos);
-            $c .= '-' . $t->[0];
+            $c .= $sign . $t->[0];
             return [$c, 'TK_WORD'];
         }
         if ( $c eq 'in' ) { # hack for 'in' operator
@@ -481,20 +490,46 @@ sub get_next_token {
          my $esc = 0;
          my $resulting_string = $c;
          if ( $parser_pos < scalar @input ) {
-             while ( $esc || $input[$parser_pos] ne $sep ) {
-                 $resulting_string .= $input[$parser_pos];
-                 if ( not $esc ) {
-                     $esc = ( $input[$parser_pos] eq '\\' ) ? 1 : 0;
-                 } else {
-                     $esc = 0;
+            if ( $sep eq '/') {
+                # handle regexp separately...
+                my $in_char_class = 0;
+                while ( $esc || $in_char_class || $input[$parser_pos] ne $sep ) {
+                    $resulting_string .= $input[$parser_pos];
+                    if ( not $esc ) {
+                        $esc = ( $input[$parser_pos] eq '\\' ) ? 1 : 0;
+                        if ( $input[$parser_pos] eq '[' ) {
+                            $in_char_class = 1;
+                        } elsif ( $input[$parser_pos] eq ']' ) {
+                            $in_char_class = 0;
+                        }
+                    } else {
+                        $esc = 0;
+                    }
+                    $parser_pos++;
+                    if ( $parser_pos >= scalar @input ) {
+                        # incomplete string/rexp when end-of-file reached.
+                        # bail out with what had been received so far.
+                        return [$resulting_string, 'TK_STRING'];
+                     }
                  }
-                 $parser_pos++;
-                 if ( $parser_pos >= scalar @input ) {
-                    # incomplete string/rexp when end-of-file reached.
-                    # bail out with what had been received so far.
-                    return [$resulting_string, 'TK_STRING'];
-                 }
-             }
+                 
+             } else {
+                # and handle string also separately
+                while ( $esc || $input[$parser_pos] ne $sep ) {
+                    $resulting_string .= $input[$parser_pos];
+                    if ( not $esc ) {
+                        $esc = ( $input[$parser_pos] eq '\\' ) ? 1 : 0;
+                    } else {
+                        $esc = 0;
+                    }
+                    $parser_pos++;
+                    if ( $parser_pos >= scalar @input ) {
+                        # incomplete string/rexp when end-of-file reached.
+                        # bail out with what had been received so far.
+                        return [$resulting_string, 'TK_STRING'];
+                     }
+                }
+            }
          }
          $parser_pos++;
          $resulting_string .= $sep;
@@ -526,10 +561,17 @@ sub get_next_token {
             }
         }
     }
-    
-    if ($c eq '<' && join('', @input[0..3]) eq '<!--') {
+
+    if ($c eq '<' && $parser_pos + 2 < scalar @input && join('', @input[$parser_pos-1 .. $parser_pos+2]) eq '<!--') {
         $parser_pos += 3;
         return ['<!--', 'TK_COMMENT'];
+    }
+    if ($c eq '-' && $parser_pos + 1 < scalar @input && join('', @input[$parser_pos-1 .. $parser_pos+1]) eq '-->') {
+        $parser_pos += 2;
+        if ($wanted_newline) {
+            print_newline();
+        }
+        return ['-->', 'TK_COMMENT'];
     }
     
     if ( grep { $c eq $_ } @punct ) {
