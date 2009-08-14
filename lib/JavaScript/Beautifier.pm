@@ -3,7 +3,7 @@ package JavaScript::Beautifier;
 use warnings;
 use strict;
 
-our $VERSION = '0.13';
+our $VERSION = '0.14';
 our $AUTHORITY = 'cpan:FAYLAND';
 
 use base 'Exporter';
@@ -21,7 +21,7 @@ my @punct      = split(' ', '+ - * / % & ++ -- = += -= *= /= %= == === != !== > 
 # words which should always start on new line.
 my @line_starter = split(',', 'continue,try,throw,return,var,if,switch,case,default,for,while,break,function');
 
-my ( $opt_indent_level, $opt_indent_size, $opt_indent_character, $opt_preserve_newlines );
+my ( $opt_indent_level, $opt_indent_size, $opt_indent_character, $opt_preserve_newlines, $opt_space_after_anon_function );
 
 sub js_beautify {
     my ( $js_source_code, $opts ) = @_;
@@ -30,6 +30,7 @@ sub js_beautify {
     $opt_indent_character = $opts->{indent_character} || ' ';
     $opt_preserve_newlines = exists $opts->{preserve_newlines} ? $opts->{preserve_newlines} : 1;
     $opt_indent_level = $opts->{indent_level} ||= 0;
+    $opt_space_after_anon_function = exists $opts->{space_after_anon_function} ? $opts->{space_after_anon_function} : 0;
 
     # -------------------------------------
     $indent_string = '';
@@ -65,21 +66,40 @@ sub js_beautify {
         
         if ( $token_type eq 'TK_START_EXPR' ) {
             $var_line = 0;
-            set_mode('EXPRESSION');
+            
+            if ( $token_text eq '[' ) {
+                if ( $current_mode eq '[EXPRESSION]') {
+                    # multidimensional arrays
+                    # (more like two-dimensional, though: deeper levels are treated the same as the second)
+                    print_newline();
+                    push @output, $indent_string;
+                }
+            }
+            if ( $token_text eq '[' ) {
+                set_mode('[EXPRESSION]');
+            } else {
+                set_mode('(EXPRESSION)');
+            }
+            
             if ( $last_text eq ';' || $last_type eq 'TK_START_BLOCK' ) {
                 print_newline();
             } elsif ( $last_type eq 'TK_END_EXPR' || $last_type eq 'TK_START_EXPR' ) {
                 # do nothing on (( and )( and ][ and ]( ..
             } elsif ( $last_type ne 'TK_WORD' && $last_type ne 'TK_OPERATOR' ) {
                 print_space();
+            } elsif ( $last_word eq 'function' ) {
+                # function() vs function ()
+                if ( $opt_space_after_anon_function ) {
+                    print_space();
+                }
             } elsif ( grep { $last_word eq $_ } @line_starter ) {
                 print_space();
             }
             print_token();
             $last_type = $token_type;$last_text = $token_text;next;
         } elsif ( $token_type eq 'TK_END_EXPR' ) {
-            print_token();
             restore_mode();
+            print_token();
             $last_type = $token_type;$last_text = $token_text;next;
         } elsif ( $token_type eq 'TK_START_BLOCK' ) {
             if ( $last_word eq 'do' ) {
@@ -141,7 +161,7 @@ sub js_beautify {
                 }
             } elsif ( $last_type eq 'TK_SEMICOLON' && ( $current_mode eq 'BLOCK' || $current_mode eq 'DO_BLOCK' ) ) {
                 $prefix = 'NEWLINE';
-            } elsif ( $last_type eq 'TK_SEMICOLON' && $current_mode eq 'EXPRESSION' ) {
+            } elsif ( $last_type eq 'TK_SEMICOLON' && ( $current_mode eq '[EXPRESSION]' || $current_mode eq '(EXPRESSION)' ) ) {
                 $prefix = 'SPACE';
             } elsif ( $last_type eq 'TK_STRING') {
                 $prefix = 'NEWLINE';
@@ -163,13 +183,13 @@ sub js_beautify {
                 } elsif ( ( $last_type eq 'TK_START_EXPR' || $last_text eq '=' || $last_text eq ',' ) && $token_text eq 'function' ) {
                     # no need to force newline on 'function': (function
                     # DONOTHING
-                } elsif ( $last_type eq 'TK_WORD' && ( $last_text eq 'return' || $last_text eq 'throw' ) ) {
+                } elsif ( $last_text eq 'return' || $last_text eq 'throw' ) {
                     # no newline between 'return nnn'
                     print_space();
                 } elsif ( $last_type ne 'TK_END_EXPR' ) {
                     if ( ($last_type ne 'TK_START_EXPR' || $token_text ne 'var') && $last_text ne ':' ) {
                         # no need to force newline on 'var': for (var x = 0...)
-                        if ( $token_text eq 'if' && $last_type eq 'TK_WORD' && $last_word eq 'else' ) {
+                        if ( $token_text eq 'if' && $last_word eq 'else' ) {
                             # no newline for } else if {
                             print_space();
                         }  else {
@@ -215,7 +235,7 @@ sub js_beautify {
                     $var_line = 0;
                 }
             }
-            if ($var_line && $token_text eq ',' && $current_mode eq 'EXPRESSION') {
+            if ($var_line && $token_text eq ',' && ( $current_mode eq '[EXPRESSION]' || $current_mode eq '(EXPRESSION)' ) ) {
                 # do not break on comma, for(var a = 1, b = 2)
                 $var_line_tainted = 0;
             }
@@ -249,7 +269,7 @@ sub js_beautify {
                         print_token();
                         print_newline();
                     } else {
-                        # EXPR od DO_BLOCK
+                        # EXPR or DO_BLOCK
                         print_token();
                         print_space();
                     }
@@ -682,7 +702,7 @@ if you prefer Tab than Space, try:
 
 =item preserve_newlines
 
-default is 1.
+default is 1
 
     my $in = "var\na=dont_preserve_newlines";
     my $out = "var a = dont_preserve_newlines";
@@ -692,6 +712,10 @@ default is 1.
     $out = "var\na = do_preserve_newlines";
     $js = js_beautify( $in, { preserve_newlines => 1 } );
     # $out eq $js
+
+=item space_after_anon_function
+
+default is 0
 
 =back
 
